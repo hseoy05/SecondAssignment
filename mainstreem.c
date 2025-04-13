@@ -10,6 +10,7 @@ char command[30];
 char* cToken[10];
 int cTokenLen = 0;
 
+void fork();
 void playCd(char* str);
 void playLs();
 void checkCommand();
@@ -22,8 +23,12 @@ int main() {
         printf("[%s@%s:%s]$", username, hostname, d_path);
         fgets(command, sizeof(command), stdin);
         command[strcspn(command, "\n")] = '\0';
-        checkCommand();
+        fork();
     }
+}
+
+void fork(){
+    checkCommand();
 }
 
 //-----command start----------------
@@ -40,7 +45,7 @@ void checkCommand() {
     else if (strcmp(command, "ls") == 0) {
         playLs();
     }
-    else if (strncmp(command, "cd", 2) == 0) {
+    else if (strncmp(command, "cd ", 3) == 0) {
         char* context;
         strtok_s(command, " ", &context);
         char* token = strtok_s(NULL, ",", &context);
@@ -58,7 +63,10 @@ void checkCommand() {
 
 // make cd-----------------------------------------------------
 void playCd(char* str) {
-    if (str == NULL || strcmp(str,".")==0) return;
+    if (str == NULL || strcmp(str, ".") == 0) {
+        printf("Invalid command");
+        return;
+    }
 
     if (strcmp(str, "..") == 0) {
         if (nowNode->parent != NULL) {
@@ -66,7 +74,7 @@ void playCd(char* str) {
             d_path = nowNode->name;
         }
         else {
-            printf("there is no parent directory");
+            printf("there is no parent directory\n");
         }
         return;
     }
@@ -89,9 +97,10 @@ void playLs() {
     File* file = nowNode->file;
 
     if (current == NULL && file == NULL) {
-        printf("nothing");
+        printf("nothing\n");
         return;
     }
+
     while (current != NULL) {
         printf("%s  ", current->name);
         current = current->sibling;
