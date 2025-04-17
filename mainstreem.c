@@ -8,7 +8,7 @@
 char* username = "oepickle";
 char* hostname = "UNI-CTJ";
 Node* nowNode;
-char* d_path=NULL;
+char d_path[30];
 char command[30];
 char* cToken[10];
 int cTokenLen = 0;
@@ -19,21 +19,26 @@ void checkCommand();
 
 int main() {
     directoryStart();
-    d_path = root->name;
+    strcpy(d_path, root->name);
     nowNode = root;
     while (strcmp(command, "exit") != 0) { //Until: Enter exit
-        printf("[%s@%s:%s]$", username, hostname, d_path);
+        printf("%s@%s:%s$ ", username, hostname, d_path);
         fgets(command, sizeof(command), stdin);
         command[strcspn(command, "\n")] = '\0';
 
-        pid_t pid = fork();
-
-        if (pid == 0) {
+        //cd, ls -> parent
+        if (strncmp(command, "cd ", 3) == 0 || strcmp(command, "ls") == 0) {
             checkCommand();
-            _exit(0);
-        }
-        else {
-            wait(NULL);
+        }else {
+            pid_t pid = fork();
+
+            if (pid == 0) {
+                checkCommand();
+                _exit(0);
+            }
+            else {
+                wait(NULL);
+            }
         }
     }
 }
@@ -57,20 +62,18 @@ void checkCommand() {
         }
         printf("\n");
     }
+    else if (strncmp(command, "cd ", 3) == 0) {
+                char* context;
+                strtok_r(command, " ", &context);
+                char* token = strtok_r(NULL, " ", &context);
+
+                while (token != NULL) {
+                    playCd(token);
+                    token = strtok_r(NULL, " ", &context);
+                }
+        }
     else if (strcmp(command, "ls") == 0) { //ls (print files)
         playLs();
-    }
-    else if (strncmp(command, "cd", 2) == 0) {// move directory
-        if (strncmp(command, "cd ", 3) == 0) {
-            char* context;
-            strtok_r(command, " ", &context);
-            char* token = strtok_r(NULL, " ", &context);
-
-            while (token != NULL) {
-                playCd(token);
-                token = strtok_r(NULL, " ", &context);
-            }
-        }
     }
     else {
         printf("%s: command not found\n", command);
@@ -90,23 +93,27 @@ void playCd(char* str) {
     }
 
     if (strcmp(str, "..") == 0) {
-        if (nowNode->parent != NULL) {
-            nowNode = nowNode->parent;
-            d_path = nowNode->name;
+        char* lastSlash = strrchr(d_path, '/');
+
+        if (lastSlash != NULL && lastSlash !=d_path) {
+            *lastSlash = '\0';
         }
         else {
-            printf("there is no parent directory\n");
+            strcpy(d_path, "/");
         }
+        nowNode = nowNode->parent;
         return;
     }
 
     Node* current = nowNode->child;
+    str[strcspn(str, "\n")] = '\0';
     while (current != NULL) {
-        str[strcspn(str, "\n")] = '\0';
         if (strcmp(str, current->name) == 0) {
             nowNode = current;
-            d_path = current->name;
-            printf("%s", d_path);
+            if (strcmp("/", current->parent->name) != 0) {
+                strcat(d_path, "/");
+            }
+            strcat(d_path, current->name);
             return;
         }
         current = current->sibling;
