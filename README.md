@@ -1,3 +1,3 @@
 4th는 실행파일입니다!
-mainstreem.c와 directory_struct.c두 파일을 메인으로 봐주시면 됩니다.
-(mainstreem.c에 directory_struct.c를 참조하기 위해 directoryy_struct.h를 제작했습니다.)
+mainstreem.c와 directory_struct.c두 파일만을 봐주시면 됩니다.
+(directory_struct.h는 mainstreem에서 directory_struct를 참조하기 위한 헤더파일이고, assignment2_CyKor.sln은 솔루션 파일입니다... 잘못 업로드 했어요.)
