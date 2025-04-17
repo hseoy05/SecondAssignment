@@ -5,6 +5,7 @@
 #include <sys/wait.h>
 #include "directory_struct.h"
 
+//-------definition----------------------------------------
 char* username = "oepickle";
 char* hostname = "UNI-CTJ";
 Node* nowNode;
@@ -16,7 +17,10 @@ int cTokenLen = 0;
 void playCd(char* str);
 void playLs();
 void checkCommand();
+//----------------------------------------------------------------
 
+
+//------main function start----------------------------------------------------
 int main() {
     directoryStart();
     strcpy(d_path, root->name);
@@ -43,7 +47,10 @@ int main() {
     }
 }
 
-//-----command start----------------
+
+
+
+//-----command start-------------------------------------------------
 void checkCommand() {
     if (strcmp(command, "pwd") == 0) { //Now directory show.
         printf("%s\n", d_path);
@@ -81,7 +88,7 @@ void checkCommand() {
 }
 
 
-// make cd-----------------------------------------------------
+// play cd-----------------------------------------------------
 void playCd(char* str) {
     if (str == NULL || strcmp(str, " ") == 0) {
         printf("Invalid command");
@@ -121,7 +128,7 @@ void playCd(char* str) {
     printf("cd: %s: No such directory\n", str);
 }
 
-//---make ls---------------------------
+//--------- play ls---------------------------
 void playLs() {
     Node* current = nowNode->child;
     File* file = nowNode->file;
