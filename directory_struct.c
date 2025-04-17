@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "directory_struct.h"
+#include "childFunction.h"
 
 void directoryStart();
 void fileStart(Node* connectNode);
