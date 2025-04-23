@@ -5,6 +5,7 @@
 #include <sys/wait.h>
 #include "directory_struct.h"
 
+//-------------- global values ---------------------------------
 char* username = "oepickle";
 char* hostname = "UNI-CTJ";
 Node* nowNode;
@@ -14,11 +15,14 @@ char* cToken[10];
 int cTokenLen = 0;
 int pipeFlag = 1;
 
-void playCd(char* str);
+int playCd(char* str);
 void playLs();
 int checkCommand();
 void pipelineCheck(char* token);
 int programstart(char* cmd);
+//------------------------------------------------------------------
+
+
 
 int main() {
     directoryStart();
@@ -32,103 +36,26 @@ int main() {
 
         if (strcmp(command, "exit") == 0) break;
 
-        char* token = strtok(command, ";");
-        pipelineCheck(token);
-    }
-}
-
-void pipelineCheck(char* token) {
-    if (token == NULL) return;
-    while (*token == ' ') token++;
-
-    char* command = strtok(token, ";");
-    while (command != NULL) {
-        while (*command == ' ') command++;
-
-        if (strstr(command, "&&")) {
-            char* left = strtok(command, "&&");
-            char* right = strtok(NULL, "&&");
-            while (*left == ' ') token++;
-            if (programstart(left) != 0) programstart(right);
-        }
-        else if (strstr(command, "||")) {
-            char* left = strtok(command, "||");
-            char* right = strtok(NULL, "||");
-
-            if (left) while (*left == ' ') left++;
-            if (right) while (*right == ' ') right++;
-
-            if (programstart(left) == 0) programstart(right);
+        if (strchr(command, ';')!=NULL){
+            char* token = strtok(command, ";");
+            while (token != NULL) {
+                while (*token == ' ') token++;
+                pipelineCheck(token);
+                token = strtok(NULL, ";");
+            }
         }
         else {
-            programstart(command);
+            pipelineCheck(command);
+            //programstart(command);
         }
-
-        command = strtok(NULL, ";");
+        
     }
 }
-
-//--------------------------------------------------
-int programstart(char *cmd){
-    if (strncmp(cmd, "cd ", 3) == 0) {
-        char* context;
-        strtok_r(cmd, " ", &context);
-        char* token = strtok_r(NULL, " ", &context);
-        int returnVal = 1;
-
-        if (strcmp(token, ".") == 0) {
-            return 1;
-        }
-
-        if (strcmp(token, "..") == 0) {
-            char* lastSlash = strrchr(d_path, '/');
-
-            if (lastSlash != NULL && lastSlash != d_path) {
-                *lastSlash = '\0';
-            }
-            else {
-                strcpy(d_path, "/");
-            }
-            nowNode = nowNode->parent;
-            return 1;
-        }
-
-        while (token != NULL) {
-            Node* current = nowNode->child;
-            int found = 0;
-            while (current != NULL) {
-                if (strcmp(token, current->name) == 0) {
-                    nowNode = current;
-                    if (strcmp("/", current->parent->name) != 0) strcat(d_path, "/");
-                    strcat(d_path, current->name);
-                    found = 1;
-                    break;
-                }
-                current = current->sibling;
-            }
-            if (!found) {
-                printf("cd: %s: No such directory\n", token);
-                returnVal = 0;
-            }
-            token = strtok_r(NULL, " ", &context);
-        }
-        return returnVal;
-    }
-    pid_t pid = fork();
-
-    if (pid == 0) {
-        int ret = checkCommand(cmd);
-        _exit(ret);
-    }
-    else {
-        int status;
-        wait(&status);
-        return WEXITSTATUS(status);
-    }
-}
-
 //-----command start----------------
 int checkCommand(char* cmd) {
+    if (strncmp(cmd, "cd", 2) == 0) {
+        return 1;
+    }
     if (strcmp(cmd, "pwd") == 0) { //Now directory show.
         printf("%s\n", d_path);
         return 1;
@@ -153,9 +80,133 @@ int checkCommand(char* cmd) {
         playLs();
         return 1;
     }
-    else{
+    else {
         printf("%s: command not found\n", cmd);
         return 0;
+    }
+}
+
+int programstart(char *cmd){
+    int cdFlag = 0;
+    while (*cmd == ' ') cmd++;
+
+    if (strcmp(cmd, "cd") == 0) {
+        cdFlag++;
+    }
+    else if (strncmp(cmd, "cd ", 3)==0) {
+        char* cmd2 = cmd + 3;
+        if (cmd2[0]=='/') {
+            if (cmd2[1] == '\0') {
+                cdFlag = 1;
+                strcpy(cmd2, "/");
+                nowNode = root;
+            }
+            else {
+                char* context;
+                char* token = strtok_r(cmd2+1, "/", &context);
+                while (token != NULL) {
+                    cdFlag = playCd(token);
+                    if (cdFlag == 0) {
+                        printf("Invalid directory name,\n");
+                        return 0;
+                    }
+                    token = strtok_r(NULL, "/", &context);
+                }
+                return 1;
+            }
+        }
+        else {
+            cdFlag = playCd(cmd2);
+            return cdFlag;
+        }
+    }
+    else {
+        pid_t pid = fork();
+        if (pid == 0) {
+            int ret = checkCommand(cmd);
+            _exit(ret);
+        }
+        else {
+            int status;
+            wait(&status);
+            return WEXITSTATUS(status);
+        }
+    }
+    return cdFlag;
+}
+
+//------------ pipeline check------------------------------
+void pipelineCheck(char* token) {
+    char temp[100];
+    strcpy(temp, token);
+    char* andOper = strstr(temp, "&&");
+    char* orOper = strstr(temp, "||");
+    if (andOper != NULL) {
+        *andOper = '\0';
+        char* left = temp;
+        char* right = andOper + 2;
+        while (*left == ' ') left++;
+        while (*right == ' ') right++;
+        if (programstart(left) != 0) {
+            programstart(right);
+        }
+    }
+    else if (orOper != NULL) {
+        *orOper = '\0';
+        char* left = temp;
+        char* right = orOper + 2;
+        while (*left == ' ') left++;
+        while (*right == ' ') right++;
+        if (programstart(left) == 0) {
+            programstart(right);
+        }
+    }
+    else {
+        programstart(token);
+    }
+}
+
+int playCd(char* token)
+{
+    int returnVal = 0;
+    if (strlen(token) == 0 || token[0] == ' ') {
+        printf("Invalid Syntax\n");
+        return 0;
+    }
+    else if (strcmp(token, ".") == 0) {
+        return 1;
+    }
+    else if (strcmp(token, "..") == 0) {
+        char* lastSlash = strrchr(d_path, '/');
+        if (lastSlash != NULL && lastSlash != d_path) {
+            *lastSlash = '\0';
+        }
+        else {
+            strcpy(d_path, "/");
+        }
+        nowNode = nowNode->parent;
+        return 1;
+    }
+    else {
+        Node* current = nowNode->child;
+        while (current != NULL) {
+            if (current->name != NULL && strcmp(token, current->name) == 0) {
+                nowNode = current;
+                if (strcmp(d_path, "/") != 0) {
+                    strcat(d_path, "/");
+                }
+                strcat(d_path, current->name);
+
+                returnVal = 1;
+                break;
+            }
+            current = current->sibling;
+        }
+        if (returnVal != 1) {
+            returnVal = 0;
+            return 0;
+        }
+        return returnVal;
     }
 }
 
