@@ -5,7 +5,6 @@
 #include "childFunction.h"
 
 void directoryStart();
-void fileStart(Node* connectNode);
 
 Node* root = NULL;
 
@@ -23,7 +22,6 @@ void directoryStart() {
 	bin->child = NULL;
 	bin->sibling = NULL;
 	bin->file = NULL;
-	fileStart(bin);
 
 	Node* user = malloc(sizeof(Node));
 	strcpy(user->name, "user");
@@ -56,10 +54,20 @@ void directoryStart() {
 	user1->file = NULL;
 
 	home->child = user1;
-}
 
-void fileStart(Node* connectNode){
-	File* lib = malloc(sizeof(File));
-	strcpy(lib->name, "file1");
-	connectNode->file = lib;
+	//-----------file make---------------
+	File* lib1 = malloc(sizeof(File));
+	strcpy(lib1->name, "file1");
+	lib1->parentNode = user1;
+	lib1->next = NULL;
+	strcpy(lib1->text, "Hello, World1");
+
+	File* lib2 = malloc(sizeof(File));
+	strcpy(lib2->name, "file2");
+	lib2->parentNode = user1;
+	lib2->next = NULL;
+	strcpy(lib2->text, "My name is SeoYeon.");
+
+	lib1->next = lib2;
+	user1->file = lib1;
 }

@@ -13,10 +13,11 @@ extern Node* root;
 
 void directoryStart();
 
-//file도 여기에 첨부를 해야할 것 같은데...
 typedef struct File {
 	char name[64];
+	struct Node* parentNode;
 	struct File* next;
+	char text[200];
 } File;
 
 #endif 

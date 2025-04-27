@@ -14,12 +14,17 @@ char command[30];
 char* cToken[10];
 int cTokenLen = 0;
 int pipeFlag = 1;
+char printArr[300];
+int iOperCheck = 0;
+char returnArr[100];
 
 int playCd(char* str);
-void playLs();
-int checkCommand();
+char* playLs();
+void runPipe(char* left, char* right);
+char* checkCommand(char* command);
 void pipelineCheck(char* token);
 int programstart(char* cmd);
+char* playCat(char* filename, char arr[100]);
 //------------------------------------------------------------------
 
 
@@ -51,96 +56,16 @@ int main() {
         
     }
 }
-//-----command start----------------
-int checkCommand(char* cmd) {
-    if (strncmp(cmd, "cd", 2) == 0) {
-        return 1;
-    }
-    if (strcmp(cmd, "pwd") == 0) { //Now directory show.
-        printf("%s\n", d_path);
-        return 1;
-    }
-    else if (strcmp(cmd, "exit") == 0) { //exit program
-        printf("exit program\n");
-        return 1;
-    }
-    else if (strncmp(cmd, "echo ", 5) == 0) { //echo (print string)
-        char* context;
-        strtok_r(cmd, " ", &context);
-        char* token = strtok_r(NULL, " ", &context);
-
-        while (token != NULL) {
-            printf("%s ", token);
-            token = strtok_r(NULL, " ", &context);
-        }
-        printf("\n");
-        return 1;
-    }
-    else if (strcmp(cmd, "ls") == 0) { //ls (print files)
-        playLs();
-        return 1;
-    }
-    else {
-        printf("%s: command not found\n", cmd);
-        return 0;
-    }
-}
-
-int programstart(char *cmd){
-    int cdFlag = 0;
-    while (*cmd == ' ') cmd++;
-
-    if (strcmp(cmd, "cd") == 0) {
-        cdFlag++;
-    }
-    else if (strncmp(cmd, "cd ", 3)==0) {
-        char* cmd2 = cmd + 3;
-        if (cmd2[0]=='/') {
-            if (cmd2[1] == '\0') {
-                cdFlag = 1;
-                strcpy(cmd2, "/");
-                nowNode = root;
-            }
-            else {
-                char* context;
-                char* token = strtok_r(cmd2+1, "/", &context);
-                while (token != NULL) {
-                    cdFlag = playCd(token);
-                    if (cdFlag == 0) {
-                        printf("Invalid directory name,\n");
-                        return 0;
-                    }
-                    token = strtok_r(NULL, "/", &context);
-                }
-                return 1;
-            }
-        }
-        else {
-            cdFlag = playCd(cmd2);
-            return cdFlag;
-        }
-    }
-    else {
-        pid_t pid = fork();
-        if (pid == 0) {
-            int ret = checkCommand(cmd);
-            _exit(ret);
-        }
-        else {
-            int status;
-            wait(&status);
-            return WEXITSTATUS(status);
-        }
-    }
-    return cdFlag;
-}
 
 //------------ pipeline check------------------------------
 void pipelineCheck(char* token) {
     char temp[100];
     strcpy(temp, token);
+
     char* andOper = strstr(temp, "&&");
     char* orOper = strstr(temp, "||");
+    char* pipeOper = strstr(temp, "|");
+
     if (andOper != NULL) {
         *andOper = '\0';
         char* left = temp;
@@ -161,11 +86,143 @@ void pipelineCheck(char* token) {
             programstart(right);
         }
     }
+    else if (pipeOper != NULL) { 
+        *pipeOper = '\0';
+        char* left = temp;
+        char* right = pipeOper + 1;
+        while (*left == ' ') left++;
+        while (*right == ' ') right++;
+        runPipe(left, right); 
+    }
     else {
-        programstart(token);
+        programstart(temp);
     }
 }
 
+void runPipe(char* left, char* right) {
+    int fd[2];
+    pipe(fd);
+
+    pid_t pid1 = fork();
+    if (pid1 == 0) { // 첫 번째 자식
+        dup2(fd[1], STDOUT_FILENO); // stdout -> 파이프 입력
+        close(fd[0]); // 읽기 닫기
+        close(fd[1]);
+        programstart(left); // 왼쪽 명령 실행
+        _exit(0);
+    }
+
+    pid_t pid2 = fork();
+    if (pid2 == 0) { // 두 번째 자식
+        dup2(fd[0], STDIN_FILENO); // stdin -> 파이프 출력
+        close(fd[1]); // 쓰기 닫기
+        close(fd[0]);
+        programstart(right); // 오른쪽 명령 실행
+        _exit(0);
+    }
+
+    close(fd[0]);
+    close(fd[1]);
+
+    int status;
+    waitpid(pid1, &status, 0);
+    waitpid(pid2, &status, 0);
+}
+
+int programstart(char* cmd) {
+    int cdFlag = 0;
+    while (*cmd == ' ') cmd++;
+
+    if (strncmp(cmd, "cd", 2) == 0 || strncmp(cmd, "pwd", 3) == 0 ||
+        strncmp(cmd, "echo", 4) == 0 || strncmp(cmd, "exit", 4) == 0) {
+        checkCommand(cmd);
+        return 1;
+    }
+    else {
+        pid_t pid = fork();
+        if (pid == 0) {
+            // 자식 프로세스
+            checkCommand(cmd);
+            _exit(0);
+        }
+        else {
+            int status;
+            wait(&status);
+            return WEXITSTATUS(status);
+        }
+    }
+}
+
+char* checkCommand(char* cmd) {
+    returnArr[0] = '\0';
+    if (strcmp(cmd, "pwd") == 0) {
+        printf("%s\n", d_path);
+        return NULL;
+    }
+    else if (strncmp(cmd, "cd", 2) == 0) {
+        char* context;
+        strtok_r(cmd, " ", &context);
+        char* token = strtok_r(NULL, " ", &context);
+
+        if (token == NULL) {
+            return NULL;
+        }
+
+        if (strchr(token, '/') != NULL) {
+            if (strcmp(token, "/") == 0) {
+                nowNode = root;
+                strcpy(d_path, "/");
+                return NULL;
+            }
+            char* path = token + 1;
+            char* subContext;
+            char* part = strtok_r(path, "/", &subContext);
+            nowNode = root;
+            strcpy(d_path, "/");
+            while (part != NULL) {
+                playCd(part);
+                part = strtok_r(NULL, "/", &subContext);
+            }
+        }
+        else {
+            playCd(token);
+        }
+        return NULL;
+    }
+    else if (strncmp(cmd, "echo", 4) == 0) {
+        printf("%s\n", cmd + 5);
+        return NULL;
+    }
+    else if (strncmp(cmd, "cat", 3) == 0) {
+        char* context;
+        strtok_r(cmd, " ", &context);
+        char* token = strtok_r(NULL, " ", &context);
+
+        if (token == NULL) {
+            char buf[1000];
+            int n;
+            while ((n = read(STDIN_FILENO, buf, sizeof(buf) - 1)) > 0) {
+                buf[n] = '\0';
+                printf("%s", buf);
+            }
+            return NULL;
+        }
+
+        while (token != NULL) {
+            playCat(token, returnArr);
+            token = strtok_r(NULL, " ", &context);
+        }
+        return returnArr;
+    }
+    else if (strcmp(cmd, "ls") == 0) {
+        playLs();
+        return returnArr;
+    }
+    else {
+        printf("%s: command not found\n", cmd);
+        return NULL;
+    }
+}
 int playCd(char* token)
 {
     int returnVal = 0;
@@ -211,23 +268,46 @@ int playCd(char* token)
 }
 
 //---make ls---------------------------
-void playLs() {
+char* playLs() {
+    returnArr[0] = '\0';
+
     Node* current = nowNode->child;
     File* file = nowNode->file;
 
     if (current == NULL && file == NULL) {
         printf("nothing\n");
-        return;
+        return NULL;
     }
 
     while (current != NULL) {
         printf("%s  ", current->name);
+        strcat(returnArr, current->name);
+        strcat(returnArr," ");
         current = current->sibling;
     }
     while (file != NULL) {
         printf("%s  ", file->name);
-        break;
-        //file = file->next;
+        strcat(returnArr, file->name);
+        strcat(returnArr, " ");
+        file = file->next;
     }
     printf("\n");
+    return returnArr;
+}
+
+char* playCat(char* str, char arr[100]) {
+    File* file = nowNode->file;
+
+    if (file == NULL) {
+        printf("nothing\n");
+        return NULL;
+    }
+    while (file != NULL) {
+        if (strcmp(file->name, str) == 0) { 
+            printf("%s\n", file->text);
+            strcat(arr, file->text);
+        }
+        file = file->next;
+    }
+    return arr;
 }
