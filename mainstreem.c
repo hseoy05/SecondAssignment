@@ -17,6 +17,8 @@ int pipeFlag = 1;
 char printArr[300];
 int iOperCheck = 0;
 char returnArr[100];
+char buffer[100];
+int isPipeMode = 0;
 
 int playCd(char* str);
 char* playLs();
@@ -105,19 +107,28 @@ void runPipe(char* left, char* right) {
 
     pid_t pid1 = fork();
     if (pid1 == 0) { // 첫 번째 자식
-        dup2(fd[1], STDOUT_FILENO); // stdout -> 파이프 입력
         close(fd[0]); // 읽기 닫기
+        memset(buffer, 0, sizeof(buffer));
+        isPipeMode = 1;
+        checkCommand(left); // 왼쪽 명령 실행
+        write(fd[1], buffer, strlen(buffer) + 1);
         close(fd[1]);
-        programstart(left); // 왼쪽 명령 실행
         _exit(0);
     }
 
     pid_t pid2 = fork();
     if (pid2 == 0) { // 두 번째 자식
-        dup2(fd[0], STDIN_FILENO); // stdin -> 파이프 출력
         close(fd[1]); // 쓰기 닫기
+        char buffer_local[100];
+        memset(buffer_local, 0, sizeof(buffer_local));
+        read(fd[0], buffer_local, sizeof(buffer_local));
+        
+        char* token = strtok(buffer_local, " ");
+        while (token != NULL) {
+            checkCommand(token);
+            token = strtok(NULL, " ");
+        }
         close(fd[0]);
-        programstart(right); // 오른쪽 명령 실행
         _exit(0);
     }
 
@@ -155,9 +166,14 @@ int programstart(char* cmd) {
 
 char* checkCommand(char* cmd) {
     returnArr[0] = '\0';
+    buffer[0] = '\0';
+
     if (strcmp(cmd, "pwd") == 0) {
-        printf("%s\n", d_path);
-        return NULL;
+        if (isPipeMode)
+            sprintf(buffer, "%s", d_path);
+        else
+            printf("%s\n", d_path);
+        return buffer;
     }
     else if (strncmp(cmd, "cd", 2) == 0) {
         char* context;
@@ -190,20 +206,25 @@ char* checkCommand(char* cmd) {
         return NULL;
     }
     else if (strncmp(cmd, "echo", 4) == 0) {
-        printf("%s\n", cmd + 5);
-        return NULL;
+        if (isPipeMode)
+            sprintf(buffer, "%s", cmd + 5);
+        else
+            printf("%s\n", cmd + 5);
+        return buffer;
     }
-    else if (strncmp(cmd, "cat", 3) == 0) {
+    else if (strncmp(cmd, "cat ", 4) == 0) {
         char* context;
         strtok_r(cmd, " ", &context);
         char* token = strtok_r(NULL, " ", &context);
 
         if (token == NULL) {
-            char buf[1000];
-            int n;
-            while ((n = read(STDIN_FILENO, buf, sizeof(buf) - 1)) > 0) {
-                buf[n] = '\0';
-                printf("%s", buf);
+            if (!isPipeMode) {
+                char buf[1000];
+                while (fgets(buf, sizeof(buf), stdin) != NULL) {
+                    printf("%s", buf);
+                }
+            }else {
+                buffer[0] = '\0';
             }
             return NULL;
         }
@@ -212,22 +233,34 @@ char* checkCommand(char* cmd) {
             playCat(token, returnArr);
             token = strtok_r(NULL, " ", &context);
         }
-        return returnArr;
+        if (isPipeMode) {
+            sprintf(buffer, "%s", returnArr);
+        }
+        else {
+            printf("%s\n", returnArr);
+        }
+        return buffer;
     }
     else if (strcmp(cmd, "ls") == 0) {
         playLs();
-        return returnArr;
+        return buffer;
     }
     else {
-        printf("%s: command not found\n", cmd);
-        return NULL;
+        if (isPipeMode)
+            sprintf(buffer, "%s: command not found", cmd);
+        else
+            printf("%s: command not found\n", cmd);
+        return buffer;
     }
 }
 int playCd(char* token)
 {
     int returnVal = 0;
     if (strlen(token) == 0 || token[0] == ' ') {
-        printf("Invalid Syntax\n");
+        if (isPipeMode)
+            sprintf(buffer, "Invalid Syntax");
+        else
+            printf("Invalid Syntax\n");
         return 0;
     }
     else if (strcmp(token, ".") == 0) {
@@ -260,7 +293,10 @@ int playCd(char* token)
             current = current->sibling;
         }
         if (returnVal != 1) {
-            returnVal = 0;
+            if (isPipeMode)
+                sprintf(buffer, "Invalid directory name");
+            else
+                printf("Invalid directory name\n");
             return 0;
         }
         return returnVal;
@@ -269,45 +305,55 @@ int playCd(char* token)
 
 //---make ls---------------------------
 char* playLs() {
-    returnArr[0] = '\0';
+    returnArr[0] = '\0'; // 결과 문자열 초기화
 
     Node* current = nowNode->child;
     File* file = nowNode->file;
 
     if (current == NULL && file == NULL) {
-        printf("nothing\n");
+        if (!isPipeMode) printf("nothing\n");
         return NULL;
     }
 
     while (current != NULL) {
-        printf("%s  ", current->name);
+        if (!isPipeMode) printf("%s ", current->name);
         strcat(returnArr, current->name);
-        strcat(returnArr," ");
+        strcat(returnArr, " ");
         current = current->sibling;
     }
     while (file != NULL) {
-        printf("%s  ", file->name);
+        if (!isPipeMode) printf("%s ", file->name);
         strcat(returnArr, file->name);
         strcat(returnArr, " ");
         file = file->next;
     }
-    printf("\n");
+    if (!isPipeMode) printf("\n");
+
     return returnArr;
 }
 
 char* playCat(char* str, char arr[100]) {
     File* file = nowNode->file;
+    int found = 0;
 
-    if (file == NULL) {
-        printf("nothing\n");
-        return NULL;
-    }
     while (file != NULL) {
         if (strcmp(file->name, str) == 0) { 
-            printf("%s\n", file->text);
+            found = 1;
             strcat(arr, file->text);
+            strcat(arr, " ");
+            break;
         }
         file = file->next;
     }
+
+    if (!found) {
+        if (!isPipeMode)
+            printf("%s: No such file\n", str);
+        else {
+            strcat(arr, str);
+            strcat(arr, ": No such file ");
+        }
+    }
+
     return arr;
 }
