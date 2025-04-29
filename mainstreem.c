@@ -102,46 +102,67 @@ void pipelineCheck(char* token) {
 }
 
 void runPipe(char* left, char* right) {
-    int fd[2];
-    pipe(fd);
+    int fd1[2], fd2[2];
+    pipe(fd1);
+    pipe(fd2);
 
     pid_t pid1 = fork();
-    if (pid1 == 0) { // 첫 번째 자식
-        close(fd[0]); // 읽기 닫기
-        memset(buffer, 0, sizeof(buffer));
+    if (pid1 == 0) { 
+        close(fd1[0]); // 읽는 쪽 닫기
+        dup2(fd1[1], STDOUT_FILENO); 
+        close(fd1[1]);
+
+        close(fd2[0]);
+        close(fd2[1]);
+
         isPipeMode = 1;
-        checkCommand(left); // 왼쪽 명령 실행
-        write(fd[1], buffer, strlen(buffer) + 1);
-        close(fd[1]);
+        checkCommand(left); // left 명령어 실행
         _exit(0);
     }
 
     pid_t pid2 = fork();
-    if (pid2 == 0) { // 두 번째 자식
-        close(fd[1]); // 쓰기 닫기
-        char buffer_local[100];
-        memset(buffer_local, 0, sizeof(buffer_local));
-        read(fd[0], buffer_local, sizeof(buffer_local));
-        
-        char* token = strtok(buffer_local, " ");
-        while (token != NULL) {
-            checkCommand(token);
-            token = strtok(NULL, " ");
-        }
-        close(fd[0]);
+    if (pid2 == 0) { 
+        close(fd1[1]); // 쓰는 쪽 닫기
+        dup2(fd1[0], STDIN_FILENO); // 표준입력을 파이프 읽기 쪽으로 연결
+        close(fd1[0]);
+
+        close(fd2[0]);
+        dup2(fd2[1], STDOUT_FILENO);
+        close(fd2[1]);
+
+        isPipeMode = 1;
+        checkCommand(right); // right 명령어 실행
         _exit(0);
     }
 
-    close(fd[0]);
-    close(fd[1]);
+    close(fd1[0]);
+    close(fd1[1]);
+    close(fd2[1]);
 
-    int status;
-    waitpid(pid1, &status, 0);
-    waitpid(pid2, &status, 0);
+    char buf[100];
+    ssize_t n;
+    while ((n = read(fd2[0], buf, sizeof(buf))) > 0) {
+        write(STDOUT_FILENO, buf, n);
+    }
+    close(fd2[0]);
+
+    waitpid(pid1, NULL, 0);
+    waitpid(pid2, NULL, 0);
 }
 
 int programstart(char* cmd) {
-    int cdFlag = 0;
+    int background = 0;
+    int len = strlen(cmd);
+
+    if (len > 0 && cmd[len - 1] == '&') {
+        background = 1;
+        cmd[len - 1] = '\0'; // &를 문자열에서 제거
+        while (len > 1 && cmd[len - 2] == ' ') {
+            cmd[len - 2] = '\0'; // 공백도 같이 제거
+            len--;
+        }
+    }
+
     while (*cmd == ' ') cmd++;
 
     if (strncmp(cmd, "cd", 2) == 0 || strncmp(cmd, "pwd", 3) == 0 ||
@@ -152,14 +173,19 @@ int programstart(char* cmd) {
     else {
         pid_t pid = fork();
         if (pid == 0) {
-            // 자식 프로세스
             checkCommand(cmd);
             _exit(0);
         }
         else {
-            int status;
-            wait(&status);
-            return WEXITSTATUS(status);
+            if (!background) {
+                int status;
+                waitpid(pid, &status, 0);
+                return WEXITSTATUS(status);
+            }
+            else {
+                printf("[Background pid %d]\n", pid);
+                return 0;
+            }
         }
     }
 }
@@ -183,7 +209,14 @@ char* checkCommand(char* cmd) {
         if (token == NULL) {
             return NULL;
         }
-
+        if (token == NULL && isPipeMode != 0) {
+            char buf[100];
+            ssize_t n;
+            while ((n = read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
+                write(STDOUT_FILENO, buf, n);
+            }
+            return NULL;
+        }
         if (strchr(token, '/') != NULL) {
             if (strcmp(token, "/") == 0) {
                 nowNode = root;
@@ -212,19 +245,16 @@ char* checkCommand(char* cmd) {
             printf("%s\n", cmd + 5);
         return buffer;
     }
-    else if (strncmp(cmd, "cat ", 4) == 0) {
+    else if (strncmp(cmd, "cat", 3) == 0) {
         char* context;
         strtok_r(cmd, " ", &context);
         char* token = strtok_r(NULL, " ", &context);
 
-        if (token == NULL) {
-            if (!isPipeMode) {
-                char buf[1000];
-                while (fgets(buf, sizeof(buf), stdin) != NULL) {
-                    printf("%s", buf);
-                }
-            }else {
-                buffer[0] = '\0';
+        if (token == NULL&&isPipeMode!=0) {
+            char buf[1024];
+            ssize_t n;
+            while ((n = read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
+                write(STDOUT_FILENO, buf, n);
             }
             return NULL;
         }
@@ -308,28 +338,45 @@ char* playLs() {
     returnArr[0] = '\0'; // 결과 문자열 초기화
 
     Node* current = nowNode->child;
-    File* file = nowNode->file;
-
-    if (current == NULL && file == NULL) {
-        if (!isPipeMode) printf("nothing\n");
+    
+    if (current == NULL&&nowNode->file == NULL) {
+        if (!isPipeMode) {
+            printf("nothing\n");
+        }
+        else {
+            write(STDOUT_FILENO, "nothing\n", 8);
+        }
         return NULL;
     }
 
     while (current != NULL) {
-        if (!isPipeMode) printf("%s ", current->name);
-        strcat(returnArr, current->name);
-        strcat(returnArr, " ");
+        if (!isPipeMode) {
+            printf("%s ", current->name);
+        }
+        else {
+            write(STDOUT_FILENO, current->name, strlen(current->name));
+            write(STDOUT_FILENO, " ", 1); // 띄어쓰기
+        }
         current = current->sibling;
     }
-    while (file != NULL) {
-        if (!isPipeMode) printf("%s ", file->name);
-        strcat(returnArr, file->name);
-        strcat(returnArr, " ");
-        file = file->next;
+    while (nowNode->file != NULL) {
+        if (!isPipeMode) {
+            printf("%s ", nowNode->file->name);
+        }
+        else {
+            write(STDOUT_FILENO, nowNode->file->name, strlen(nowNode->file->name));
+            write(STDOUT_FILENO, " ", 1);
+        }
+        nowNode->file = nowNode->file->next;
     }
-    if (!isPipeMode) printf("\n");
+    if (!isPipeMode) {
+        printf("\n");
+    }
+    else {
+        write(STDOUT_FILENO, "\n", 1);
+    }
 
-    return returnArr;
+    return NULL;
 }
 
 char* playCat(char* str, char arr[100]) {
@@ -337,18 +384,27 @@ char* playCat(char* str, char arr[100]) {
     int found = 0;
 
     while (file != NULL) {
-        if (strcmp(file->name, str) == 0) { 
+        if (strcmp(file->name, str) == 0) {
             found = 1;
-            strcat(arr, file->text);
-            strcat(arr, " ");
+            if (isPipeMode) {
+                write(STDOUT_FILENO, file->text, strlen(file->text));
+                write(STDOUT_FILENO, " ", 1); // 띄어쓰기
+            }
+            else {
+                strcat(arr, file->text);
+                strcat(arr, " ");
+            }
             break;
         }
         file = file->next;
     }
 
     if (!found) {
-        if (!isPipeMode)
-            printf("%s: No such file\n", str);
+        if (isPipeMode) {
+            char msg[100];
+            snprintf(msg, sizeof(msg), "%s: No such file ", str);
+            write(STDOUT_FILENO, msg, strlen(msg));
+        }
         else {
             strcat(arr, str);
             strcat(arr, ": No such file ");
