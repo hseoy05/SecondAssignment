@@ -18,13 +18,15 @@ char printArr[300];
 int iOperCheck = 0;
 char returnArr[100];
 char buffer[100];
+int background = 0;
 int isPipeMode = 0;
 
 int playCd(char* str);
+void rtrim(char* str);
 char* playLs();
 void runPipe(char* left, char* right);
 char* checkCommand(char* command);
-void pipelineCheck(char* token);
+int pipelineCheck(char* token);
 int programstart(char* cmd);
 char* playCat(char* filename, char arr[100]);
 //------------------------------------------------------------------
@@ -60,9 +62,21 @@ int main() {
 }
 
 //------------ pipeline check------------------------------
-void pipelineCheck(char* token) {
+int pipelineCheck(char* token) {
     char temp[100];
     strcpy(temp, token);
+
+    background = 0;
+    int len = strlen(token);
+
+    if (len > 0 && token[len - 1] == '&') {
+        background = 1;
+        token[len - 1] = '\0';
+        while (len > 1 && token[len - 2] == ' ') {
+            token[len - 2] = '\0';
+            len--;
+        }
+    }
 
     char* andOper = strstr(temp, "&&");
     char* orOper = strstr(temp, "||");
@@ -74,18 +88,18 @@ void pipelineCheck(char* token) {
         char* right = andOper + 2;
         while (*left == ' ') left++;
         while (*right == ' ') right++;
-        if (programstart(left) != 0) {
-            programstart(right);
+        if (pipelineCheck(left) != 0) {
+            pipelineCheck(right);
         }
     }
     else if (orOper != NULL) {
         *orOper = '\0';
         char* left = temp;
         char* right = orOper + 2;
-        while (*left == ' ') left++;
-        while (*right == ' ') right++;
-        if (programstart(left) == 0) {
-            programstart(right);
+        rtrim(left);
+        rtrim(right);
+        if (pipelineCheck(left) == 0) {
+            pipelineCheck(right);
         }
     }
     else if (pipeOper != NULL) { 
@@ -97,71 +111,42 @@ void pipelineCheck(char* token) {
         runPipe(left, right); 
     }
     else {
-        programstart(temp);
+        int val = programstart(temp);
+        return val;
     }
 }
 
 void runPipe(char* left, char* right) {
-    int fd1[2], fd2[2];
-    pipe(fd1);
-    pipe(fd2);
+    int fd[2];
+    pipe(fd);
 
-    pid_t pid1 = fork();
-    if (pid1 == 0) { 
-        close(fd1[0]); // 읽는 쪽 닫기
-        dup2(fd1[1], STDOUT_FILENO); 
-        close(fd1[1]);
+    pid_t pid = fork();
 
-        close(fd2[0]);
-        close(fd2[1]);
-
+    if (pid == 0) {
+        close(fd[0]);
+        dup2(fd[1], STDOUT_FILENO);
+        close(fd[1]);
         isPipeMode = 1;
-        checkCommand(left); // left 명령어 실행
+        checkCommand(left);
         _exit(0);
     }
+    else {
+        close(fd[1]);
+        wait(NULL);
+        char buf[400];
+        ssize_t n = read(fd[0], buf, sizeof(buf) - 1);
+        close(fd[0]);
+        buf[n] = '\0';
+        buf[strcspn(buf, "\n")] = '\0';
+        char str[1200];
+        snprintf(str, sizeof(str), "%s %s", right, buf);
 
-    pid_t pid2 = fork();
-    if (pid2 == 0) { 
-        close(fd1[1]); // 쓰는 쪽 닫기
-        dup2(fd1[0], STDIN_FILENO); // 표준입력을 파이프 읽기 쪽으로 연결
-        close(fd1[0]);
-
-        close(fd2[0]);
-        dup2(fd2[1], STDOUT_FILENO);
-        close(fd2[1]);
-
-        isPipeMode = 1;
-        checkCommand(right); // right 명령어 실행
-        _exit(0);
+        isPipeMode = 0;
+        checkCommand(str);
     }
-
-    close(fd1[0]);
-    close(fd1[1]);
-    close(fd2[1]);
-
-    char buf[100];
-    ssize_t n;
-    while ((n = read(fd2[0], buf, sizeof(buf))) > 0) {
-        write(STDOUT_FILENO, buf, n);
-    }
-    close(fd2[0]);
-
-    waitpid(pid1, NULL, 0);
-    waitpid(pid2, NULL, 0);
 }
 
 int programstart(char* cmd) {
-    int background = 0;
-    int len = strlen(cmd);
-
-    if (len > 0 && cmd[len - 1] == '&') {
-        background = 1;
-        cmd[len - 1] = '\0'; // &를 문자열에서 제거
-        while (len > 1 && cmd[len - 2] == ' ') {
-            cmd[len - 2] = '\0'; // 공백도 같이 제거
-            len--;
-        }
-    }
 
     while (*cmd == ' ') cmd++;
 
@@ -183,7 +168,6 @@ int programstart(char* cmd) {
                 return WEXITSTATUS(status);
             }
             else {
-                printf("[Background pid %d]\n", pid);
                 return 0;
             }
         }
@@ -206,16 +190,11 @@ char* checkCommand(char* cmd) {
         strtok_r(cmd, " ", &context);
         char* token = strtok_r(NULL, " ", &context);
 
-        if (token == NULL) {
+        if (isPipeMode==0&&token == NULL) {
             return NULL;
         }
-        if (token == NULL && isPipeMode != 0) {
-            char buf[100];
-            ssize_t n;
-            while ((n = read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
-                write(STDOUT_FILENO, buf, n);
-            }
-            return NULL;
+        if (!token) {
+            if (!isPipeMode) printf("cd: missing argument\n");
         }
         if (strchr(token, '/') != NULL) {
             if (strcmp(token, "/") == 0) {
@@ -236,7 +215,6 @@ char* checkCommand(char* cmd) {
         else {
             playCd(token);
         }
-        return NULL;
     }
     else if (strncmp(cmd, "echo", 4) == 0) {
         if (isPipeMode)
@@ -251,7 +229,7 @@ char* checkCommand(char* cmd) {
         char* token = strtok_r(NULL, " ", &context);
 
         if (token == NULL&&isPipeMode!=0) {
-            char buf[1024];
+            char buf[200];
             ssize_t n;
             while ((n = read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
                 write(STDOUT_FILENO, buf, n);
@@ -276,15 +254,12 @@ char* checkCommand(char* cmd) {
         return buffer;
     }
     else {
-        if (isPipeMode)
-            sprintf(buffer, "%s: command not found", cmd);
-        else
-            printf("%s: command not found\n", cmd);
-        return buffer;
+        return " ";
     }
 }
 int playCd(char* token)
 {
+    rtrim(token);
     int returnVal = 0;
     if (strlen(token) == 0 || token[0] == ' ') {
         if (isPipeMode)
@@ -340,76 +315,50 @@ char* playLs() {
     Node* current = nowNode->child;
     
     if (current == NULL&&nowNode->file == NULL) {
-        if (!isPipeMode) {
-            printf("nothing\n");
-        }
-        else {
-            write(STDOUT_FILENO, "nothing\n", 8);
-        }
+        printf("nothing\n");
         return NULL;
     }
 
     while (current != NULL) {
-        if (!isPipeMode) {
-            printf("%s ", current->name);
-        }
-        else {
-            write(STDOUT_FILENO, current->name, strlen(current->name));
-            write(STDOUT_FILENO, " ", 1); // 띄어쓰기
-        }
+        printf("%s ", current->name);
         current = current->sibling;
     }
-    while (nowNode->file != NULL) {
-        if (!isPipeMode) {
-            printf("%s ", nowNode->file->name);
-        }
-        else {
-            write(STDOUT_FILENO, nowNode->file->name, strlen(nowNode->file->name));
-            write(STDOUT_FILENO, " ", 1);
-        }
-        nowNode->file = nowNode->file->next;
+    File* file = nowNode->file;
+    while (file != NULL) {
+        printf("%s ", file->name);
+        file = file->next;
     }
-    if (!isPipeMode) {
-        printf("\n");
-    }
-    else {
-        write(STDOUT_FILENO, "\n", 1);
-    }
+    printf("\n");
 
+    fflush(stdout);
     return NULL;
 }
 
 char* playCat(char* str, char arr[100]) {
+    rtrim(str);
     File* file = nowNode->file;
     int found = 0;
 
     while (file != NULL) {
         if (strcmp(file->name, str) == 0) {
             found = 1;
-            if (isPipeMode) {
-                write(STDOUT_FILENO, file->text, strlen(file->text));
-                write(STDOUT_FILENO, " ", 1); // 띄어쓰기
-            }
-            else {
-                strcat(arr, file->text);
-                strcat(arr, " ");
-            }
+            strcat(arr, file->text);
+            strcat(arr, " ");
             break;
         }
         file = file->next;
     }
 
     if (!found) {
-        if (isPipeMode) {
-            char msg[100];
-            snprintf(msg, sizeof(msg), "%s: No such file ", str);
-            write(STDOUT_FILENO, msg, strlen(msg));
-        }
-        else {
-            strcat(arr, str);
-            strcat(arr, ": No such file ");
-        }
+        strcat(arr, str);
+        strcat(arr, ": No such file ");
     }
+}
 
-    return arr;
+void rtrim(char* str) {
+    int len = strlen(str);
+    while (len > 0 && (str[len - 1] == ' ' || str[len - 1] == '\t' || str[len - 1] == '\n')) {
+        str[len - 1] = '\0';
+        len--;
+    }
 }
