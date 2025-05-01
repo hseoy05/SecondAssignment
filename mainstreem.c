@@ -5,31 +5,31 @@
 #include <sys/wait.h>
 #include "directory_struct.h"
 
+//--------------------------------------------------------------
 //-------------- global values ---------------------------------
 char* username = "oepickle";
 char* hostname = "UNI-CTJ";
 Node* nowNode;
+File* nowFile;
 char d_path[30];
 char command[30];
-char* cToken[10];
-int cTokenLen = 0;
 int pipeFlag = 1;
-char printArr[300];
-int iOperCheck = 0;
-char returnArr[100];
-char buffer[100];
-int background = 0;
+char catArr[100];
+int isBackgroundMode = 0;
 int isPipeMode = 0;
+//-------------- global function ------------------------------
+int pipelineCheck(char* token);
+void runPipe(char* left, char* right);
+int programstart(char* cmd);
+void checkCommand(char* command);
 
 int playCd(char* str);
-void rtrim(char* str);
-char* playLs();
-void runPipe(char* left, char* right);
-char* checkCommand(char* command);
-int pipelineCheck(char* token);
-int programstart(char* cmd);
+void playLs();
 char* playCat(char* filename, char arr[100]);
-//------------------------------------------------------------------
+void rtrim(char* str);
+//--------------------------------------------------------------
+//--------------------------------------------------------------
+
 
 
 
@@ -55,29 +55,28 @@ int main() {
         }
         else {
             pipelineCheck(command);
-            //programstart(command);
         }
         
     }
 }
 
-//------------ pipeline check------------------------------
+//------------ &&, ||, & check ------------------------------
 int pipelineCheck(char* token) {
     char temp[100];
     strcpy(temp, token);
-
-    background = 0;
+    //--------------back ground play--------------------
+    isBackgroundMode = 0;
     int len = strlen(token);
 
     if (len > 0 && token[len - 1] == '&') {
-        background = 1;
+        isBackgroundMode = 1;
         token[len - 1] = '\0';
         while (len > 1 && token[len - 2] == ' ') {
             token[len - 2] = '\0';
             len--;
         }
     }
-
+    //-----------------------------------------------
     char* andOper = strstr(temp, "&&");
     char* orOper = strstr(temp, "||");
     char* pipeOper = strstr(temp, "|");
@@ -106,8 +105,8 @@ int pipelineCheck(char* token) {
         *pipeOper = '\0';
         char* left = temp;
         char* right = pipeOper + 1;
-        while (*left == ' ') left++;
-        while (*right == ' ') right++;
+        rtrim(left);
+        rtrim(right);
         runPipe(left, right); 
     }
     else {
@@ -115,7 +114,9 @@ int pipelineCheck(char* token) {
         return val;
     }
 }
+//----------------------------------------------------
 
+//----------------check | pipeline-----------------------
 void runPipe(char* left, char* right) {
     int fd[2];
     pipe(fd);
@@ -145,7 +146,9 @@ void runPipe(char* left, char* right) {
         checkCommand(str);
     }
 }
+//----------------------------------------------------------------
 
+//------------ make child process using fork --------------------
 int programstart(char* cmd) {
 
     while (*cmd == ' ') cmd++;
@@ -162,7 +165,7 @@ int programstart(char* cmd) {
             _exit(0);
         }
         else {
-            if (!background) {
+            if (!isBackgroundMode) {
                 int status;
                 waitpid(pid, &status, 0);
                 return WEXITSTATUS(status);
@@ -173,17 +176,14 @@ int programstart(char* cmd) {
         }
     }
 }
+//----------------------------------------------------
 
-char* checkCommand(char* cmd) {
-    returnArr[0] = '\0';
-    buffer[0] = '\0';
+//--------------- go pwd, cd, echo, cat, ls ------------------------
+void checkCommand(char* cmd) {
+    catArr[0] = '\0';
 
     if (strcmp(cmd, "pwd") == 0) {
-        if (isPipeMode)
-            sprintf(buffer, "%s", d_path);
-        else
-            printf("%s\n", d_path);
-        return buffer;
+        printf("%s\n", d_path);
     }
     else if (strncmp(cmd, "cd", 2) == 0) {
         char* context;
@@ -191,7 +191,7 @@ char* checkCommand(char* cmd) {
         char* token = strtok_r(NULL, " ", &context);
 
         if (isPipeMode==0&&token == NULL) {
-            return NULL;
+            return;
         }
         if (!token) {
             if (!isPipeMode) printf("cd: missing argument\n");
@@ -200,7 +200,7 @@ char* checkCommand(char* cmd) {
             if (strcmp(token, "/") == 0) {
                 nowNode = root;
                 strcpy(d_path, "/");
-                return NULL;
+                return;
             }
             char* path = token + 1;
             char* subContext;
@@ -217,11 +217,7 @@ char* checkCommand(char* cmd) {
         }
     }
     else if (strncmp(cmd, "echo", 4) == 0) {
-        if (isPipeMode)
-            sprintf(buffer, "%s", cmd + 5);
-        else
-            printf("%s\n", cmd + 5);
-        return buffer;
+        printf("%s\n", cmd + 5);
     }
     else if (strncmp(cmd, "cat", 3) == 0) {
         char* context;
@@ -234,38 +230,30 @@ char* checkCommand(char* cmd) {
             while ((n = read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
                 write(STDOUT_FILENO, buf, n);
             }
-            return NULL;
+            return;
         }
 
         while (token != NULL) {
-            playCat(token, returnArr);
+            playCat(token, catArr);
             token = strtok_r(NULL, " ", &context);
         }
-        if (isPipeMode) {
-            sprintf(buffer, "%s", returnArr);
-        }
-        else {
-            printf("%s\n", returnArr);
-        }
-        return buffer;
+        printf("%s\n", catArr);
+        return;
     }
     else if (strcmp(cmd, "ls") == 0) {
         playLs();
-        return buffer;
-    }
-    else {
-        return " ";
+        return;
     }
 }
+//--------------------------------------------------------
+
+//--------------make cd ------------------------------------
 int playCd(char* token)
 {
     rtrim(token);
     int returnVal = 0;
     if (strlen(token) == 0 || token[0] == ' ') {
-        if (isPipeMode)
-            sprintf(buffer, "Invalid Syntax");
-        else
-            printf("Invalid Syntax\n");
+        printf("Invalid Syntax\n");
         return 0;
     }
     else if (strcmp(token, ".") == 0) {
@@ -291,32 +279,27 @@ int playCd(char* token)
                     strcat(d_path, "/");
                 }
                 strcat(d_path, current->name);
-
                 returnVal = 1;
                 break;
             }
             current = current->sibling;
         }
         if (returnVal != 1) {
-            if (isPipeMode)
-                sprintf(buffer, "Invalid directory name");
-            else
-                printf("Invalid directory name\n");
+            printf("Invalid directory name\n");
             return 0;
         }
         return returnVal;
     }
 }
+//------------------------------------------------------------
 
-//---make ls---------------------------
-char* playLs() {
-    returnArr[0] = '\0'; // 결과 문자열 초기화
-
+//---make ls--------------------------------------------------
+void playLs() {
     Node* current = nowNode->child;
     
     if (current == NULL&&nowNode->file == NULL) {
-        printf("nothing\n");
-        return NULL;
+        printf("No files\n");
+        return;
     }
 
     while (current != NULL) {
@@ -331,22 +314,25 @@ char* playLs() {
     printf("\n");
 
     fflush(stdout);
-    return NULL;
+    return;
 }
+//-----------------------------------------------
 
+//---------make cat-------------------------------
 char* playCat(char* str, char arr[100]) {
     rtrim(str);
-    File* file = nowNode->file;
+    nowFile = nowNode->file;
     int found = 0;
 
-    while (file != NULL) {
-        if (strcmp(file->name, str) == 0) {
+    while (nowFile != NULL) {
+        if (strcmp(nowFile->name, str) == 0) {
             found = 1;
-            strcat(arr, file->text);
+            strcat(arr, nowFile->text);
             strcat(arr, " ");
             break;
         }
-        file = file->next;
+        printf("\n");
+        nowFile = nowFile->next;
     }
 
     if (!found) {
@@ -354,7 +340,9 @@ char* playCat(char* str, char arr[100]) {
         strcat(arr, ": No such file ");
     }
 }
+//------------------------------------------------------
 
+//------------공백 제거------------------------------------
 void rtrim(char* str) {
     int len = strlen(str);
     while (len > 0 && (str[len - 1] == ' ' || str[len - 1] == '\t' || str[len - 1] == '\n')) {
@@ -362,3 +350,4 @@ void rtrim(char* str) {
         len--;
     }
 }
+//-----------------------------------------------------
