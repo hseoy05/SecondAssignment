@@ -52,6 +52,14 @@ void directoryStart() {
 	user1->sibling = NULL;
 	user1->file = NULL;
 
+	Node* user2 = malloc(sizeof(Node));
+	strcpy(user2->name, "sexyboyKim");
+	user2->parent = home;
+	user2->child = NULL;
+	user2->sibling = NULL;
+	user2->file = NULL;
+
+	user1->sibling = user2;
 	home->child = user1;
 
 	//-----------file make---------------
@@ -66,6 +74,21 @@ void directoryStart() {
 	lib2->parentNode = user1;
 	lib2->next = NULL;
 	strcpy(lib2->text, "My name is SeoYeon.");
+
+	File* commandCat = malloc(sizeof(File));
+	strcpy(commandCat->name, "cat");
+	commandCat->parentNode = bin;
+	commandCat->next = NULL;
+	strcpy(commandCat->text, "command cat");
+
+	File* commandEcho = malloc(sizeof(File));
+	strcpy(commandEcho->name, "echo");
+	commandEcho->parentNode = bin;
+	commandEcho->next = NULL;
+	strcpy(commandEcho->text, "command echo");
+
+	commandCat->next = commandEcho;
+	bin->file = commandCat;
 
 	lib1->next = lib2;
 	user1->file = lib1;
