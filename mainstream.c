@@ -167,8 +167,7 @@ void runPipe(char* left, char* right) {
 int programstart(char* cmd) {
     trim(cmd);
 
-    if (strncmp(cmd, "cd", 2) == 0 || strncmp(cmd, "pwd", 3) == 0 ||
-        strncmp(cmd, "echo", 4) == 0 || strncmp(cmd, "exit", 4) == 0) {
+    if (strncmp(cmd, "cd", 2) == 0 || strncmp(cmd, "echo", 4) == 0 || strncmp(cmd, "exit", 4) == 0) {
         checkCommand(cmd);
         return 1;
     }
@@ -197,7 +196,16 @@ void checkCommand(char* cmd) {
     trim(cmd);
 
     if (strcmp(cmd, "pwd") == 0) {
-        printf("%s\n", d_path);
+        char* filename = strrchr(d_path, '/');
+        if (filename != NULL) {
+            if (strcmp(filename, "/") == 0) {
+                printf("/\n");
+            }
+            else {
+                filename++;
+                printf("%s\n", filename);  
+            }
+        }
     }
     else if (strncmp(cmd, "cd", 2) == 0) {
         char* context;
