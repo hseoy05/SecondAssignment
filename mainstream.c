@@ -167,7 +167,9 @@ void runPipe(char* left, char* right) {
 int programstart(char* cmd) {
     trim(cmd);
 
-    if (strncmp(cmd, "cd", 2) == 0 || strncmp(cmd, "echo", 4) == 0 || strncmp(cmd, "exit", 4) == 0) {
+    if (strncmp(cmd, "cd", 2) == 0 ||
+        strncmp(cmd, "echo", 4) == 0 || 
+        strncmp(cmd, "exit", 4) == 0) {
         checkCommand(cmd);
         return 1;
     }
@@ -362,8 +364,6 @@ void playLs() {
         file = file->next;
     }
     printf("\n");
-
-    fflush(stdout);
     return;
 }
 //-----------------------------------------------
@@ -391,19 +391,20 @@ void playCat(char* str, char arr[VALUE_SIZE]) {
 }
 //------------------------------------------------------
 
-//------------���� ����------------------------------------
+//------------remove space------------------------------------
 void trim(char* str) {
     int len = strlen(str);
-    while (len > 0 && (str[len - 1] == ' ' || str[len - 1] == '\t' || str[len - 1] == '\n')) {
+    while (len > 0 && (str[len - 1] == ' ' 
+        || str[len - 1] == '\n')) {
         str[len - 1] = '\0';
         len--;
     }
     int index = 0;
-    while (str[index] == ' ' || str[index] == '\t') {
+    while (str[index] == ' ') {
         index++;
     }
     if (index > 0) {
-        memmove(str, str + index, strlen(str + index) + 1);  // +1 to move null terminator
+        memmove(str, str + index, strlen(str + index) + 1);
     }
 }
 //-----------------------------------------------------
