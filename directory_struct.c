@@ -29,12 +29,12 @@ void directoryStart() {
 	user->sibling = bin;
 	user->file = NULL;
 
-	Node* ect = malloc(sizeof(Node));
-	strcpy(ect->name, "ect");
-	ect->parent = root;
-	ect->child = NULL;
-	ect->sibling = user;
-	ect->file = NULL;
+	Node* etc = malloc(sizeof(Node));
+	strcpy(etc->name, "etc");
+	etc->parent = root;
+	etc->child = NULL;
+	etc->sibling = user;
+	etc->file = NULL;
 
 	Node* home = malloc(sizeof(Node));
 	strcpy(home->name, "home");
